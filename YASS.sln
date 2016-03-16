@@ -1,0 +1,68 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.24720.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YASS", "YASS\YASS.csproj", "{66913A08-3479-49EE-AC99-ABD4F26D3ECF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ManagedOpenSsl", "openssl-net\ManagedOpenSsl\ManagedOpenSsl.csproj", "{73DCC218-655B-485F-8EAC-0CE5F2F7343D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{0B823D27-242A-4731-8818-107B8BC11EEC}"
+	ProjectSection(SolutionItems) = preProject
+		Performance1.psess = Performance1.psess
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+		Trace|Any CPU = Trace|Any CPU
+		Trace|x64 = Trace|x64
+		Trace|x86 = Trace|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Debug|x64.ActiveCfg = Debug|x64
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Debug|x64.Build.0 = Debug|x64
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Debug|x86.ActiveCfg = Debug|x86
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Debug|x86.Build.0 = Debug|x86
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Release|x64.ActiveCfg = Release|x64
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Release|x64.Build.0 = Release|x64
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Release|x86.ActiveCfg = Release|x86
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Release|x86.Build.0 = Release|x86
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Trace|Any CPU.ActiveCfg = Release|Any CPU
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Trace|Any CPU.Build.0 = Release|Any CPU
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Trace|x64.ActiveCfg = Release|x64
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Trace|x64.Build.0 = Release|x64
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Trace|x86.ActiveCfg = Release|x86
+		{66913A08-3479-49EE-AC99-ABD4F26D3ECF}.Trace|x86.Build.0 = Release|x86
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Debug|x64.ActiveCfg = Debug|x64
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Debug|x64.Build.0 = Debug|x64
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Debug|x86.ActiveCfg = Debug|x86
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Debug|x86.Build.0 = Debug|x86
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Release|x64.ActiveCfg = Release|x64
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Release|x64.Build.0 = Release|x64
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Release|x86.ActiveCfg = Release|x86
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Release|x86.Build.0 = Release|x86
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Trace|Any CPU.ActiveCfg = Trace|Any CPU
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Trace|Any CPU.Build.0 = Trace|Any CPU
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Trace|x64.ActiveCfg = Trace|x64
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Trace|x64.Build.0 = Trace|x64
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Trace|x86.ActiveCfg = Trace|x86
+		{73DCC218-655B-485F-8EAC-0CE5F2F7343D}.Trace|x86.Build.0 = Trace|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
