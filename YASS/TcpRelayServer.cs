@@ -337,20 +337,17 @@ namespace YASS
                             await remote.ConnectAsync(address, port).ConfigureAwait(false);
 
                             stage = ConnectionStage.RemoteConnected;
-
-                            await stream.WriteAsync(iv2, 0, ivlen, _serverCt).ConfigureAwait(false);
-
+                            
                             using (var remoteStream = remote.GetStream())
                             using (var clientCts = new CancellationTokenSource())
                             using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_serverCt, clientCts.Token))
                             {
-
                                 var ct = linkedCts.Token;
                                 var clientTask = hmacClient
                                     ? StartHmacEnabledClientRelayAsync(stream, remoteStream, iv, decryptor, ct)
                                     : StartRelayAsync(stream, remoteStream, decryptor, ct);
 
-                                var remoteTask = StartRelayAsync(remoteStream, stream, encryptor, ct);
+                                var remoteTask = StartRelayAsync(remoteStream, stream, encryptor, iv2, 0, ivlen, ct);
                                 stage = ConnectionStage.Streaming;
 
                                 await Task.WhenAny(clientTask, remoteTask);
@@ -377,17 +374,27 @@ namespace YASS
             logger.DebugFormat("client{0}<{1}:{2}> disconnected", clientIndex, clientEndPoint.Address, clientEndPoint.Port);
         }
 
-        private async Task StartRelayAsync(Stream srcStream, Stream dstStream, ICryptoTransform transformer, /* useless */ CancellationToken ct)
+        private async Task StartRelayAsync(Stream srcStream, Stream dstStream, ICryptoTransform transformer, byte[] advancePayload,
+            int payloadOffset, int payloadCount, /* useless */ CancellationToken ct)
         {
             var buffer = new byte[8192];
             try
             {
                 while (!ct.IsCancellationRequested && srcStream.CanRead && dstStream.CanWrite)
                 {
-                    var len = await srcStream.ReadAsync(buffer, 0, buffer.Length, ct).ConfigureAwait(false);
+                    if (advancePayload != null)
+                    {
+                        Buffer.BlockCopy(advancePayload, payloadOffset, buffer, 0, payloadCount);
+                    }
+                    var len = await srcStream.ReadAsync(buffer, payloadCount, buffer.Length-payloadCount, ct).ConfigureAwait(false);
                     if (len == 0) throw new SocketException();
-                    transformer.TransformBlock(buffer, 0, len, buffer, 0);
-                    await dstStream.WriteAsync(buffer, 0, len, ct).ConfigureAwait(false);
+                    transformer.TransformBlock(buffer, payloadCount, len, buffer, payloadCount);
+                    await dstStream.WriteAsync(buffer, 0, payloadCount + len, ct).ConfigureAwait(false);
+                    if (advancePayload != null)
+                    {
+                        advancePayload = null;
+                        payloadOffset = payloadCount = 0;
+                    }
                     lock (_xferBytesLocker) BytesTransferred += len;
                 }
             }
@@ -397,6 +404,10 @@ namespace YASS
 
         }
 
+        private async Task StartRelayAsync(Stream srcStream, Stream dstStream, ICryptoTransform transformer, /* useless */ CancellationToken ct)
+        {
+            await StartRelayAsync(srcStream, dstStream, transformer, null, 0, 0, ct);
+        }
 
 
         private async Task StartHmacEnabledClientRelayAsync(Stream clientStream, Stream remoteStream, byte[] iv, ICryptoTransform decryptor, /* useless */ CancellationToken ct)
