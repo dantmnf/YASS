@@ -26,9 +26,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using YASS.AlgorithmProvider;
 
+#define YASS_ENABLE_EXTENSIONS
+
 namespace YASS
 {
-    
+    [Flags]
+    public enum AddressType
+    {
+        IPv4 = 1,
+        IPv6 = 4,
+        Hostname = 3,
+    }
 
     public class TcpRelayServer
     {
@@ -49,12 +57,8 @@ namespace YASS
             Streaming,
         }
 
-        public enum AddressType
-        {
-            IPv4 = 1,
-            IPv6 = 4,
-            Hostname = 3,
-        }
+
+
         public ServerHmacPolicy HmacPolicy = ServerHmacPolicy.OptIn;
         public IAlgorithmProvider AlgorithmProvider;
         public long BytesTransferred;
@@ -236,9 +240,12 @@ namespace YASS
                         decryptor.TransformBlock(clientBuffer, bytesParsed, 1, clientBuffer, bytesParsed);
                         var atyp = clientBuffer[bytesParsed];
                         bytesParsed++;
-                        if ((atyp & 0xE0) != 0) // 0b11100000
+                        if ((atyp & 0xC0) != 0) // 0b11000000
                             invalidClientException = new ProtocolViolationException("Invalid ATYP value.");
                         var hmacClient = (atyp & 0x10) == 0x10; // 0b00010000
+#if (YASS_ENABLE_EXTENSIONS)
+                        var timestampEnabled = (atyp & 0x20) == 0x20; // 0b00100000
+#endif
                         var clientAddressType = (AddressType)(atyp & 0x0F);
 
                         stage = ConnectionStage.AddressTypeReceived;
@@ -265,7 +272,7 @@ namespace YASS
                                 break;
                             default:
                                 if (invalidClientException == null)
-                                    invalidClientException = new ProtocolViolationException("Invalid address type");
+                                    invalidClientException = new ProtocolViolationException("Invalid address type.");
                                 var fakeAddressLength = new byte[1];
                                 _rng.GetNonZeroBytes(fakeAddressLength);
                                 addressLength = fakeAddressLength[0];
@@ -305,6 +312,23 @@ namespace YASS
                             }
                         }
 
+#if (YASS_ENABLE_EXTENSIONS)
+                        if (timestampEnabled)
+                        {
+                            bytesRead += await PromisedReadAsync(stream, clientBuffer, bytesRead, 8, _serverCt).ConfigureAwait(false);
+                            decryptor.TransformBlock(clientBuffer, bytesParsed, 8, clientBuffer, bytesParsed);
+                            var timestamp = new ArraySegment<byte>(clientBuffer, bytesParsed, 8);
+                            bytesParsed += 8;
+                            var clientTime = Util.UInt64FromNetworkOrder(timestamp.ToArray(), 0);
+                            var localTime = Util.GetUtcTime();
+                            if (Math.Abs((double) (clientTime - localTime)) > 120)
+                            {
+                                invalidClientException = new InvalidDataException("Timestamp error.");
+                                invalidClientStage = stage;
+                            }
+                        }
+#endif
+
                         if (invalidClientException != null)
                         {
                             stage = invalidClientStage;
@@ -319,7 +343,7 @@ namespace YASS
                             ev.RemoteAddress = new IPAddress(remoteAddress.Take(addressLength).ToArray());
                         ev.RemotePort = port;
                         OnRemoteAddressReceived(ev);
-                        if (ev.DropClient) throw new SystemException("an OnRemoteAddressReceived event handler requires dropping client");
+                        if (ev.DropClient) throw new SystemException("An OnRemoteAddressReceived event handler requires dropping client.");
 
 
                         using (var remote = new TcpClient())
@@ -363,7 +387,7 @@ namespace YASS
                 }
                 catch (Exception e)
                 {
-                    logger.ErrorFormat("client{0}<{1}:{2}> failed in stage {3}: {4} - {5}", clientIndex, clientEndPoint.Address, clientEndPoint.Port, stage, e.GetType().Name, e.Message);
+                    logger.ErrorFormat("Client{0}<{1}:{2}> failed in stage {3}: {4} - {5}", clientIndex, clientEndPoint.Address, clientEndPoint.Port, stage, e.GetType().Name, e.Message);
                     OnClientFailed(ev);
                     // reset the connection
                     client.Client.LingerState = new LingerOption(true, 0);
@@ -371,7 +395,7 @@ namespace YASS
                 }
             }
             lock(_clientTasks) _clientTasks.Remove(client);
-            logger.DebugFormat("client{0}<{1}:{2}> disconnected", clientIndex, clientEndPoint.Address, clientEndPoint.Port);
+            logger.DebugFormat("Client{0}<{1}:{2}> disconnected", clientIndex, clientEndPoint.Address, clientEndPoint.Port);
         }
 
         private async Task StartRelayAsync(Stream srcStream, Stream dstStream, ICryptoTransform transformer, byte[] advancePayload,
@@ -451,19 +475,18 @@ namespace YASS
             catch (IOException) { }
         }
 
-        private static async Task<int> PromisedReadAsync(Stream stream, byte[] buf, int offset, int count, CancellationToken ct)
+        private static async Task<int> PromisedReadAsync(Stream stream, byte[] buf, int offset, int count,
+            CancellationToken ct)
         {
-            var totallen = 0;
-            var readlen = 0;
-            while (totallen < count)
+            var totalBytesRead = 0;
+            while (totalBytesRead < count)
             {
-                readlen = await stream.ReadAsync(buf, offset + readlen, count - readlen, ct);
-                if(readlen == 0)
+                var readlen = await stream.ReadAsync(buf, offset + totalBytesRead, count - totalBytesRead, ct);
+                if (readlen == 0)
                     throw new IOException("stream closed");
-                totallen += readlen;
+                totalBytesRead += readlen;
             }
-            return totallen;
+            return totalBytesRead;
         }
-
     }
 }

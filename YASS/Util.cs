@@ -14,12 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using System.Security.Cryptography;
 
 namespace YASS
 {
-    public class Util
+    public static class Util
     {
         public static byte[] ComputeMD5Hash(byte[] buffer, int offset, int count)
         {
@@ -58,5 +59,19 @@ namespace YASS
         {
             return (ushort)(data[offset] << 8 | data[offset + 1]);
         }
+
+        public static ulong UInt64FromNetworkOrder(byte[] data, int offset)
+        {
+            return BitConverter.IsLittleEndian
+                ? BitConverter.ToUInt64(data.Skip(offset).Take(8).Reverse().ToArray(), 0)
+                : BitConverter.ToUInt64(data, offset);
+        }
+
+        public static ulong GetUtcTime()
+        {
+            var t = DateTime.UtcNow - new DateTime(1970, 1, 1);
+            return (ulong) t.TotalSeconds;
+        }
+
     }
 }
