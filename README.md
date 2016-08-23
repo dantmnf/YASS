@@ -2,10 +2,10 @@
 This program implements the Shadowsocks protocol in C#
 
 #### To-do list ####
-* [x] TCP relay server
-* [x] HMAC support for TCP relay server (known as One Time Auth in other ports)
+* [x] TCP relay server with HMAC support
+* [x] UDP relay server with HMAC support
 * [ ] TCP relay client
-* [ ] Everything about UDP
+* [ ] UDP relay client
 
 ### Building ###
 The `Any CPU` architecture neither copies OpenSSL libraries to output path, nor prefers 32-bit runtime.
