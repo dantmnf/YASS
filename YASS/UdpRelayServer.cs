@@ -33,16 +33,18 @@ namespace YASS
             _cipherName = cipherName;
             _passwordBytes = passwordBytes;
             logger = log4net.LogManager.GetLogger($"{GetType().Name}@{localAddress}:{port}");
-            _algorithm = AlgorithmProvider.GetAlgorithm(_cipherName);
-            _key = Util.GetKeyFromBytes(_passwordBytes, _algorithm.KeySize / 8);
-            //_algorithm.Key = _key;
-            _ivlen = _algorithm.BlockSize / 8;
-            logger.InfoFormat("cipher {0} initialized", _cipherName);
+            
             _portMap = new ConcurrentLRUCache<IPEndPoint, UdpClient>(lruCapacity);
         }
 
         public async Task StartServerAsync()
         {
+
+            _algorithm = AlgorithmProvider.GetAlgorithm(_cipherName);
+            _key = Util.GetKeyFromBytes(_passwordBytes, _algorithm.KeySize / 8);
+            //_algorithm.Key = _key;
+            _ivlen = _algorithm.BlockSize / 8;
+            logger.InfoFormat("cipher {0} initialized", _cipherName);
 
             _listener = new UdpClient(_localEndPoint);
             while (!_disposed)

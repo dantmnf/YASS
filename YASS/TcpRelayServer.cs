@@ -13,6 +13,7 @@
 // 
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#define YASS_ENABLE_EXTENSIONS
 
 using System;
 using System.Collections.Generic;
@@ -26,11 +27,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using YASS.AlgorithmProvider;
 
-#define YASS_ENABLE_EXTENSIONS
 
 namespace YASS
 {
-    [Flags]
     public enum AddressType
     {
         IPv4 = 1,
@@ -57,7 +56,14 @@ namespace YASS
             Streaming,
         }
 
-
+        [Flags]
+        private enum AtypFlags
+        {
+            HMACEnabled = 0x10,
+#if (YASS_ENABLE_EXTENSIONS)
+            TimestampEnabled = 0x20,
+#endif
+        }
 
         public ServerHmacPolicy HmacPolicy = ServerHmacPolicy.OptIn;
         public IAlgorithmProvider AlgorithmProvider;
@@ -240,11 +246,19 @@ namespace YASS
                         decryptor.TransformBlock(clientBuffer, bytesParsed, 1, clientBuffer, bytesParsed);
                         var atyp = clientBuffer[bytesParsed];
                         bytesParsed++;
-                        if ((atyp & 0xC0) != 0) // 0b11000000
-                            invalidClientException = new ProtocolViolationException("Invalid ATYP value.");
-                        var hmacClient = (atyp & 0x10) == 0x10; // 0b00010000
+                        
 #if (YASS_ENABLE_EXTENSIONS)
-                        var timestampEnabled = (atyp & 0x20) == 0x20; // 0b00100000
+                        const byte atypMask = 0xC0; // 0b11000000
+#else
+                        const byte atypMask = 0xE0; // 0b11100000
+#endif
+                        if ((atyp & atypMask) != 0)
+                            invalidClientException = new ProtocolViolationException("Invalid ATYP value.");
+
+                        var flaggedAtyp = (AtypFlags) atyp;
+                        var hmacClient = flaggedAtyp.HasFlag(AtypFlags.HMACEnabled);
+#if (YASS_ENABLE_EXTENSIONS)
+                        var timestampEnabled = flaggedAtyp.HasFlag(AtypFlags.TimestampEnabled);
 #endif
                         var clientAddressType = (AddressType)(atyp & 0x0F);
 

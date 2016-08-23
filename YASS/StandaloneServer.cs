@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Threading.Tasks;
 using NDesk.Options;
 using log4net;
 using log4net.Core;
@@ -37,6 +38,8 @@ namespace YASS
             public string CipherName;
             public string Password;
             public int Timeout;
+            public TcpRelayServer.ServerHmacPolicy HmacPolicy;
+            public bool UdpServer;
 
             public static ServerConfiguration ReadFromJObject(JObject config)
             {
@@ -46,7 +49,11 @@ namespace YASS
                     ListenPort = int.Parse(config["server_port"].ToString()),
                     Password = config["password"].ToString(),
                     CipherName = config["method"].ToString(),
-                    Timeout = int.Parse(config["timeout"].ToString())
+                    Timeout = int.Parse(config["timeout"].ToString()),
+                    HmacPolicy = config["auth"].ToObject<bool>() ?
+                        TcpRelayServer.ServerHmacPolicy.Mandatory :
+                        TcpRelayServer.ServerHmacPolicy.OptIn,
+                    UdpServer = config["udp"].ToObject<bool>(),
                 };
                 return result;
             }
@@ -64,7 +71,11 @@ namespace YASS
                     ListenPort = Properties.Settings.Default.ServerPort,
                     Password = Properties.Settings.Default.Password,
                     CipherName = Properties.Settings.Default.Cipher,
-                    Timeout = Properties.Settings.Default.Timeout
+                    Timeout = Properties.Settings.Default.Timeout,
+                    HmacPolicy = Properties.Settings.Default.MandatoryHmac ?
+                        TcpRelayServer.ServerHmacPolicy.Mandatory :
+                        TcpRelayServer.ServerHmacPolicy.OptIn,
+                    UdpServer = Properties.Settings.Default.UdpServer,
                 };
                 
                 return result;
@@ -101,24 +112,36 @@ namespace YASS
                     ? ServerConfiguration.ReadFromJsonFile(configFile)
                     : ServerConfiguration.ReadFromAppSettings();
                 var provider = MultiAlgorithmProvider.FindAndCreate();
-                var server = new TcpRelayServer(config.ListenAddress, config.ListenPort, config.CipherName,
-                    Encoding.UTF8.GetBytes(config.Password), config.Timeout) {AlgorithmProvider = provider};
+                var tcpRelayServer = new TcpRelayServer(config.ListenAddress, config.ListenPort, config.CipherName,
+                    Encoding.UTF8.GetBytes(config.Password), config.Timeout)
+                {
+                    AlgorithmProvider = provider,
+                    HmacPolicy = config.HmacPolicy,
+                };
+                var udpRelayServer = new UdpRelayServer(config.ListenAddress, config.ListenPort, config.CipherName,
+                    Encoding.UTF8.GetBytes(config.Password))
+                {
+                    AlgorithmProvider = provider
+                };
                 bool stopping = false;
                 Console.CancelKeyPress += (sender, e) =>
                 {
                     if (!stopping)
-                        server.StopListening();
+                        tcpRelayServer.StopListening();
                     else
-                        server.KillAllClients();
+                        tcpRelayServer.KillAllClients();
                     e.Cancel = true;
                     stopping = true;
                 };
 
-                var task = server.StartListeningAsync();
-                task.Wait();
-                task = server.WaitForAllClients();
+                var tcpServerTask = tcpRelayServer.StartListeningAsync();
+                var udpServerTask = udpRelayServer.StartServerAsync();
+                // tcpServerTask.Wait();
+                Task.WaitAny(tcpServerTask, udpServerTask);
+                tcpServerTask = tcpRelayServer.WaitForAllClients();
                 logger.Info("press Ctrl-C again to force stop");
-                task.Wait();
+                tcpServerTask.Wait();
+                udpRelayServer.StopServer();
             }
             catch (Exception e)
             {

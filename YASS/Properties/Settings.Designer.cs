@@ -67,5 +67,23 @@ namespace YASS.Properties {
                 return ((int)(this["Timeout"]));
             }
         }
+        
+        [global::System.Configuration.ApplicationScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool MandatoryHmac {
+            get {
+                return ((bool)(this["MandatoryHmac"]));
+            }
+        }
+        
+        [global::System.Configuration.ApplicationScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool UdpServer {
+            get {
+                return ((bool)(this["UdpServer"]));
+            }
+        }
     }
 }

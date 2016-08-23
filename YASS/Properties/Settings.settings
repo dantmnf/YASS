@@ -17,5 +17,11 @@
     <Setting Name="Timeout" Type="System.Int32" Scope="Application">
       <Value Profile="(Default)">600</Value>
     </Setting>
+    <Setting Name="MandatoryHmac" Type="System.Boolean" Scope="Application">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="UdpServer" Type="System.Boolean" Scope="Application">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
   </Settings>
 </SettingsFile>
