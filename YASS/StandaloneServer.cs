@@ -43,9 +43,17 @@ namespace YASS
 
             public static ServerConfiguration ReadFromJObject(JObject config)
             {
+                //let 0.0.0.0 or ::0 worked
+                IPAddress ip = null;
+                if(config["server"].ToString() == "0.0.0.0" && config["server"].ToString() != "::0")
+                    ip = IPAddress.Any;
+                else if(config["server"].ToString() == "::0")
+                    ip = IPAddress.IPv6Any;
+                else
+                    ip = Dns.GetHostAddresses(config["server"].ToString())[0];
                 var result = new ServerConfiguration
                 {
-                    ListenAddress = Dns.GetHostAddresses(config["server"].ToString())[0],
+                    ListenAddress = ip,
                     ListenPort = int.Parse(config["server_port"].ToString()),
                     Password = config["password"].ToString(),
                     CipherName = config["method"].ToString(),
