@@ -26,6 +26,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using YASS.AlgorithmProvider;
+using YASS.Extensions;
 
 
 namespace YASS
@@ -230,7 +231,7 @@ namespace YASS
                     var invalidClientStage = stage;
                     Exception invalidClientException = null;
 
-                    try { bytesRead += await PromisedReadAsync(stream, clientBuffer, bytesRead, ivlen - bytesRead, _serverCt).ConfigureAwait(false); }
+                    try { bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, ivlen - bytesRead, _serverCt).ConfigureAwait(false); }
                     catch(IOException) { throw new InvalidDataException("Can't read entire IV."); }
                     Buffer.BlockCopy(clientBuffer, 0, iv, 0, ivlen);
                     bytesParsed += ivlen;
@@ -242,7 +243,7 @@ namespace YASS
                     using (var decryptor = _algorithm.CreateDecryptor(_algorithm.Key, iv)) // we don't use CryptoStream because it won't return until it get full-length data
                     using (var encryptor = _algorithm.CreateEncryptor(_algorithm.Key, iv2))
                     {
-                        bytesRead += await PromisedReadAsync(stream, clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
+                        bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
                         decryptor.TransformBlock(clientBuffer, bytesParsed, 1, clientBuffer, bytesParsed);
                         var atyp = clientBuffer[bytesParsed];
                         bytesParsed++;
@@ -278,7 +279,7 @@ namespace YASS
                                 addressLength = 16;
                                 break;
                             case AddressType.Hostname:
-                                await PromisedReadAsync(stream, clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
+                                await stream.PromisedReadAsync(clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
                                 bytesRead++;
                                 decryptor.TransformBlock(clientBuffer, bytesParsed, 1, clientBuffer, bytesParsed);
                                 addressLength = clientBuffer[bytesParsed];
@@ -296,7 +297,7 @@ namespace YASS
                         if (invalidClientException != null)
                             invalidClientStage = stage;
                         
-                        bytesRead += await PromisedReadAsync(stream, clientBuffer, bytesRead, addressLength + 2, _serverCt).ConfigureAwait(false);
+                        bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, addressLength + 2, _serverCt).ConfigureAwait(false);
                         decryptor.TransformBlock(clientBuffer, bytesParsed, addressLength + 2, clientBuffer, bytesParsed);
 
                         var remoteAddress = new ArraySegment<byte>(clientBuffer, bytesParsed, addressLength);
@@ -313,7 +314,7 @@ namespace YASS
 
                             var localHash = Util.ComputeHMACSHA1Hash(headerHmacKey, clientBuffer, ivlen, bytesParsed-ivlen);
 
-                            bytesRead += await PromisedReadAsync(stream, clientBuffer, bytesRead, 10, _serverCt).ConfigureAwait(false);
+                            bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, 10, _serverCt).ConfigureAwait(false);
                             decryptor.TransformBlock(clientBuffer, bytesParsed, 10, clientBuffer, bytesParsed);
 
                             var clientHash = new ArraySegment<byte>(clientBuffer, bytesParsed, 10);
@@ -329,7 +330,7 @@ namespace YASS
 #if (YASS_ENABLE_EXTENSIONS)
                         if (timestampEnabled)
                         {
-                            bytesRead += await PromisedReadAsync(stream, clientBuffer, bytesRead, 8, _serverCt).ConfigureAwait(false);
+                            bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, 8, _serverCt).ConfigureAwait(false);
                             decryptor.TransformBlock(clientBuffer, bytesParsed, 8, clientBuffer, bytesParsed);
                             var timestamp = new ArraySegment<byte>(clientBuffer, bytesParsed, 8);
                             bytesParsed += 8;
@@ -463,16 +464,16 @@ namespace YASS
                 while (!ct.IsCancellationRequested && clientStream.CanRead && remoteStream.CanWrite)
                 {
                     // data length
-                    readlen = await PromisedReadAsync(clientStream, clientBuffer, 0, 2, ct).ConfigureAwait(false);
+                    readlen = await clientStream.PromisedReadAsync(clientBuffer, 0, 2, ct).ConfigureAwait(false);
                     decryptor.TransformBlock(clientBuffer, 0, readlen, clientBuffer, 0);
                     datalen = Util.UInt16FromNetworkOrder(clientBuffer, 0);
 
                     // client hash
-                    readlen = await PromisedReadAsync(clientStream, clientHash, 0, 10, ct).ConfigureAwait(false);
+                    readlen = await clientStream.PromisedReadAsync(clientHash, 0, 10, ct).ConfigureAwait(false);
                     decryptor.TransformBlock(clientHash, 0, readlen, clientHash, 0);
 
                     // data
-                    readlen = await PromisedReadAsync(clientStream, clientBuffer, 0, datalen, ct).ConfigureAwait(false);
+                    readlen = await clientStream.PromisedReadAsync(clientBuffer, 0, datalen, ct).ConfigureAwait(false);
                     lock (_xferBytesLocker) BytesTransferred += datalen + 12;
                     decryptor.TransformBlock(clientBuffer, 0, readlen, clientBuffer, 0);
                     BitConverter.GetBytes((uint)IPAddress.HostToNetworkOrder((int)chunkId)).CopyTo(hmacKey, ivlen);
@@ -489,18 +490,6 @@ namespace YASS
             catch (IOException) { }
         }
 
-        private static async Task<int> PromisedReadAsync(Stream stream, byte[] buf, int offset, int count,
-            CancellationToken ct)
-        {
-            var totalBytesRead = 0;
-            while (totalBytesRead < count)
-            {
-                var readlen = await stream.ReadAsync(buf, offset + totalBytesRead, count - totalBytesRead, ct);
-                if (readlen == 0)
-                    throw new IOException("stream closed");
-                totalBytesRead += readlen;
-            }
-            return totalBytesRead;
-        }
+       
     }
 }

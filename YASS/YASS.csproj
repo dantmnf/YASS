@@ -117,11 +117,13 @@
     <Compile Include="AlgorithmProvider\MultiAlgorithmProvider.cs" />
     <Compile Include="AlgorithmProvider\IAlgorithmProvider.cs" />
     <Compile Include="ConcurrentLRUCache.cs" />
+    <Compile Include="Extensions.cs" />
     <Compile Include="Properties\Settings.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="ShadowStream.cs" />
     <Compile Include="StandaloneServer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TcpRelayServer.cs" />
