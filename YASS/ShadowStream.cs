@@ -25,7 +25,7 @@ namespace YASS
         private readonly bool _canRead;
         private readonly bool _canWrite;
         private readonly RandomNumberGenerator _rng;
-        private byte[] _iv;
+        public byte[] IV { get; private set; }
         private int _ivlen;
         private bool _initialized;
         private SemaphoreSlim _lazyAsyncActiveSemaphore;
@@ -143,12 +143,12 @@ namespace YASS
         {
             if (!_initialized)
             {
-                _iv = new byte[_algo.BlockSize/8];
+                IV = new byte[_algo.BlockSize/8];
                 if (useAsync)
-                    await _stream.ReadAsync(_iv, 0, _iv.Length, cancellationToken);
+                    await _stream.ReadAsync(IV, 0, IV.Length, cancellationToken);
                 else
-                    _stream.Read(_iv, 0, _iv.Length);
-                _transformer = _algo.CreateDecryptor(_algo.Key, _iv);
+                    _stream.Read(IV, 0, IV.Length);
+                _transformer = _algo.CreateDecryptor(_algo.Key, IV);
                 _initialized = true;
             }
             var realBuffer = inplace ? buffer : new byte[count];
@@ -191,10 +191,10 @@ namespace YASS
             var realBuffer = new byte[_initialized ? count : count + _ivlen];
             if (!_initialized)
             {
-                _iv = new byte[_ivlen];
-                _rng.GetBytes(_iv);
-                _transformer = _algo.CreateEncryptor(_algo.Key, _iv);
-                _iv.CopyTo(realBuffer, 0);
+                IV = new byte[_ivlen];
+                _rng.GetBytes(IV);
+                _transformer = _algo.CreateEncryptor(_algo.Key, IV);
+                IV.CopyTo(realBuffer, 0);
             }
             
             _transformer.TransformBlock(buffer, offset, count, realBuffer, _initialized ? 0 : _ivlen);
@@ -237,7 +237,6 @@ namespace YASS
             WriteAsyncCore(buffer, offset, count, default(CancellationToken), useAsync: false).GetAwaiter().GetResult();
         }
         #endregion
-
 
         private SemaphoreSlim AsyncActiveSemaphore
         {

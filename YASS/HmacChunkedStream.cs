@@ -20,7 +20,6 @@ namespace YASS
         private readonly bool _canWrite;
         private byte[] _iv;
         private int _ivlen;
-        private bool _initialized;
         private SemaphoreSlim _lazyAsyncActiveSemaphore;
         private int _chunkID;
         private byte[] _lastChunk;
@@ -43,12 +42,11 @@ namespace YASS
                 case ShadowStreamMode.Write:
                     if (!(_stream.CanWrite)) throw new ArgumentException("stream not writable");
                     _canWrite = true;
-                    
+
                     break;
                 default:
                     throw new ArgumentException("invalid mdoe value");
             }
-            _initialized = false;
 
         }
         public override bool CanRead
@@ -80,12 +78,12 @@ namespace YASS
 
         public override void Flush()
         {
-            _stream.Flush();
+            //_stream.Flush();
         }
 
         public override async Task FlushAsync(CancellationToken cancellationToken)
         {
-            await _stream.FlushAsync(cancellationToken);
+            //await _stream.FlushAsync(cancellationToken);
         }
 
         public override long Seek(long offset, SeekOrigin origin)
@@ -157,21 +155,19 @@ namespace YASS
         private async Task<int> ReadAsyncCore(byte[] buffer, int offset, int count, CancellationToken cancellationToken, bool useAsync)
         {
             var bytesRead = 0;
-            while (count > 0)
+            if (_lastChunk == null || _lastChunkOffset == _lastChunk.Length) // last chunk run out
             {
-                if (_lastChunk == null || _lastChunkOffset == _lastChunk.Length) // last chunk run out
-                {
-                    var task = ReadChunkAsync(cancellationToken);
-                    _lastChunk = useAsync ? (await task) : task.Result;
-                    _lastChunkOffset = 0;
-                }
-                var bytesLastChunkcanProvide = _lastChunk.Length - _lastChunkOffset;
-                var bytesToCopy = Math.Min(count, bytesLastChunkcanProvide);
-                Buffer.BlockCopy(_lastChunk, _lastChunkOffset, buffer, offset, bytesToCopy);
-                offset += bytesToCopy;
-                count -= bytesToCopy;
-                bytesRead += bytesToCopy;
+                var task = ReadChunkAsync(cancellationToken);
+                _lastChunk = useAsync ? (await task) : task.Result;
+                _lastChunkOffset = 0;
             }
+            var bytesLastChunkcanProvide = _lastChunk.Length - _lastChunkOffset;
+            var bytesToCopy = Math.Min(count, bytesLastChunkcanProvide);
+            Buffer.BlockCopy(_lastChunk, _lastChunkOffset, buffer, offset, bytesToCopy);
+            offset += bytesToCopy;
+            count -= bytesToCopy;
+            bytesRead += bytesToCopy;
+            _lastChunkOffset += bytesToCopy;
             return bytesRead;
         }
         private void CheckReadArguments(byte[] buffer, int offset, int count)
@@ -216,7 +212,7 @@ namespace YASS
                 count -= 65535;
             }
             if (count == 0) return;
-            var realBuffer = new byte[count+12];
+            var realBuffer = new byte[count + 12];
 
             var key = new byte[_ivlen + 4];
             _iv.CopyTo(key, 0);
