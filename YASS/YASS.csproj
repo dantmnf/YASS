@@ -123,6 +123,8 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="Settings.cs" />
+    <Compile Include="HmacChunkedStream.cs" />
     <Compile Include="ShadowStream.cs" />
     <Compile Include="StandaloneServer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

@@ -23,5 +23,18 @@ namespace YASS.Extensions
             }
             return totalBytesRead;
         }
+
+        public static int PromisedRead(this Stream stream, byte[] buf, int offset, int count)
+        {
+            var totalBytesRead = 0;
+            while (totalBytesRead < count)
+            {
+                var readlen = stream.Read(buf, offset + totalBytesRead, count - totalBytesRead);
+                if (readlen == 0)
+                    throw new IOException("stream closed");
+                totalBytesRead += readlen;
+            }
+            return totalBytesRead;
+        }
     }
 }

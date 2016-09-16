@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 
 namespace YASS
@@ -60,6 +61,15 @@ namespace YASS
             return (ushort)(data[offset] << 8 | data[offset + 1]);
         }
 
+        public static byte[] UInt16ToNetworkOrder(ushort x)
+        {
+            return new []{(byte)((x & 0xFF00) >> 8), (byte)(x & 0xFF)};
+        }
+        public static byte[] Int32ToNetworkOrder(int x)
+        {
+            return BitConverter.GetBytes(IPAddress.HostToNetworkOrder(x));
+        }
+
         public static ulong UInt64FromNetworkOrder(byte[] data, int offset)
         {
             return BitConverter.IsLittleEndian
@@ -67,7 +77,7 @@ namespace YASS
                 : BitConverter.ToUInt64(data, offset);
         }
 
-        public static ulong GetUtcTime()
+        public static ulong GetUtcTimeEpoch()
         {
             var t = DateTime.UtcNow - new DateTime(1970, 1, 1);
             return (ulong) t.TotalSeconds;

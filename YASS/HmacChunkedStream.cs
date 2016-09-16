@@ -7,49 +7,41 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using YASS.Extensions;
 
 namespace YASS
 {
-    public enum ShadowStreamMode
-    {
-        Read,
-        Write
-    }
 
-    class ShadowStream : Stream, IDisposable
+    class HmacChunkedStream : Stream, IDisposable
     {
         private readonly Stream _stream;
-        private readonly SymmetricAlgorithm _algo;
-        private ICryptoTransform _transformer;
         private readonly ShadowStreamMode _mode;
         private readonly bool _canRead;
         private readonly bool _canWrite;
-        private readonly RandomNumberGenerator _rng;
         private byte[] _iv;
         private int _ivlen;
         private bool _initialized;
         private SemaphoreSlim _lazyAsyncActiveSemaphore;
+        private int _chunkID;
+        private byte[] _lastChunk;
+        private int _lastChunkOffset;
 
-        public ShadowStream(Stream underlyingStream, SymmetricAlgorithm algorithm, ShadowStreamMode mode)
+        public HmacChunkedStream(Stream underlyingStream, byte[] iv, ShadowStreamMode mode)
         {
             _stream = underlyingStream;
-            _algo = algorithm;
-            _ivlen = algorithm.BlockSize/8;
+            _iv = iv;
+            _ivlen = iv.Length;
             //_transformer = transform;
             _mode = mode;
-            _rng = RandomNumberGenerator.Create();
+            _chunkID = 0;
             switch (mode)
             {
                 case ShadowStreamMode.Read:
                     if (!(_stream.CanRead)) throw new ArgumentException("stream not readable");
-                    if (_algo.CreateDecryptor().InputBlockSize != 1)
-                        throw new ArgumentException("algorithm block size is not 1");
                     _canRead = true;
                     break;
                 case ShadowStreamMode.Write:
                     if (!(_stream.CanWrite)) throw new ArgumentException("stream not writable");
-                    if (_algo.CreateEncryptor().InputBlockSize != 1)
-                        throw new ArgumentException("algorithm block size is not 1");
                     _canWrite = true;
                     
                     break;
@@ -111,7 +103,7 @@ namespace YASS
         {
             CheckReadArguments(buffer, offset, count);
             return
-                ReadAsyncCore(buffer, offset, count, default(CancellationToken), false, true).ConfigureAwait(false).GetAwaiter().GetResult();
+                ReadAsyncCore(buffer, offset, count, default(CancellationToken), false).ConfigureAwait(false).GetAwaiter().GetResult();
         }
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
@@ -132,31 +124,54 @@ namespace YASS
             if (cancellationToken.IsCancellationRequested) return 0;
             try
             {
-                return await ReadAsyncCore(buffer, offset, count, cancellationToken, true, true);
+                return await ReadAsyncCore(buffer, offset, count, cancellationToken, true);
             }
             finally
             {
                 semaphore.Release();
             }
         }
-        private async Task<int> ReadAsyncCore(byte[] buffer, int offset, int count, CancellationToken cancellationToken, bool useAsync, bool inplace)
+
+        private async Task<byte[]> ReadChunkAsync(CancellationToken cancellationToken)
         {
-            if (!_initialized)
+            var buffer1 = new byte[10];
+            await _stream.PromisedReadAsync(buffer1, 0, 2, cancellationToken);
+            var datalen = (int)Util.UInt16FromNetworkOrder(buffer1, 0);
+            await _stream.PromisedReadAsync(buffer1, 0, 10, cancellationToken);
+            var chunkData = new byte[datalen];
+            await _stream.PromisedReadAsync(chunkData, 0, datalen, cancellationToken);
+
+            var key = new byte[_ivlen + 4];
+            _iv.CopyTo(key, 0);
+            Util.Int32ToNetworkOrder(_chunkID).CopyTo(key, _ivlen);
+
+            var remoteHash = buffer1;
+            var localHash = Util.ComputeHMACSHA1Hash(key, chunkData, 0, datalen);
+            _chunkID += 1;
+            if (localHash.Take(10).SequenceEqual(remoteHash))
+                return chunkData;
+            else
+                throw new InvalidDataException("HMAC mismatch");
+        }
+
+        private async Task<int> ReadAsyncCore(byte[] buffer, int offset, int count, CancellationToken cancellationToken, bool useAsync)
+        {
+            var bytesRead = 0;
+            while (count > 0)
             {
-                _iv = new byte[_algo.BlockSize/8];
-                if (useAsync)
-                    await _stream.ReadAsync(_iv, 0, _iv.Length, cancellationToken);
-                else
-                    _stream.Read(_iv, 0, _iv.Length);
-                _transformer = _algo.CreateDecryptor(_algo.Key, _iv);
-                _initialized = true;
+                if (_lastChunk == null || _lastChunkOffset == _lastChunk.Length) // last chunk run out
+                {
+                    var task = ReadChunkAsync(cancellationToken);
+                    _lastChunk = useAsync ? (await task) : task.Result;
+                    _lastChunkOffset = 0;
+                }
+                var bytesLastChunkcanProvide = _lastChunk.Length - _lastChunkOffset;
+                var bytesToCopy = Math.Min(count, bytesLastChunkcanProvide);
+                Buffer.BlockCopy(_lastChunk, _lastChunkOffset, buffer, offset, bytesToCopy);
+                offset += bytesToCopy;
+                count -= bytesToCopy;
+                bytesRead += bytesToCopy;
             }
-            var realBuffer = inplace ? buffer : new byte[count];
-            var realOffset = inplace ? offset : 0;
-            var bytesRead = useAsync ? await _stream.ReadAsync(realBuffer, realOffset , count, cancellationToken).ConfigureAwait(false)
-                                     : _stream.Read(realBuffer, realOffset, count);
-            _transformer.TransformBlock(realBuffer, realOffset, count, realBuffer, realOffset);
-            if (!inplace) Buffer.BlockCopy(realBuffer, 0, buffer, offset, count);
             return bytesRead;
         }
         private void CheckReadArguments(byte[] buffer, int offset, int count)
@@ -185,24 +200,39 @@ namespace YASS
                 throw new ArgumentException("SR.Argument_InvalidOffLen");
         }
 
+
+
         private async Task WriteAsyncCore(byte[] buffer, int offset, int count, CancellationToken cancellationToken,
             bool useAsync)
         {
-            var realBuffer = new byte[_initialized ? count : count + _ivlen];
-            if (!_initialized)
+            while (count > 65535)
             {
-                _iv = new byte[_ivlen];
-                _rng.GetBytes(_iv);
-                _transformer = _algo.CreateEncryptor(_algo.Key, _iv);
-                _iv.CopyTo(realBuffer, 0);
+                var task = WriteAsyncCore(buffer, offset, 65535, cancellationToken, useAsync);
+                if (useAsync)
+                    await task;
+                else
+                    task.Wait();
+                offset += 65535;
+                count -= 65535;
             }
-            
-            _transformer.TransformBlock(buffer, offset, count, realBuffer, _initialized ? 0 : _ivlen);
+            if (count == 0) return;
+            var realBuffer = new byte[count+12];
+
+            var key = new byte[_ivlen + 4];
+            _iv.CopyTo(key, 0);
+            Util.Int32ToNetworkOrder(_chunkID).CopyTo(key, _ivlen);
+            var hash = Util.ComputeHMACSHA1Hash(key, buffer, offset, count);
+
+            Util.UInt16ToNetworkOrder((ushort)count).CopyTo(realBuffer, 0);
+            hash.Take(10).ToArray().CopyTo(realBuffer, 2);
+            Buffer.BlockCopy(buffer, offset, realBuffer, 12, count);
+
             if (useAsync)
                 await _stream.WriteAsync(realBuffer, 0, realBuffer.Length, cancellationToken);
             else
                 _stream.Write(realBuffer, 0, realBuffer.Length);
-            if (!_initialized) _initialized = true;
+
+            _chunkID += 1;
         }
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {

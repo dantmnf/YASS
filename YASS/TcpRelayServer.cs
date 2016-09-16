@@ -335,7 +335,7 @@ namespace YASS
                             var timestamp = new ArraySegment<byte>(clientBuffer, bytesParsed, 8);
                             bytesParsed += 8;
                             var clientTime = Util.UInt64FromNetworkOrder(timestamp.ToArray(), 0);
-                            var localTime = Util.GetUtcTime();
+                            var localTime = Util.GetUtcTimeEpoch();
                             if (Math.Abs((double) (clientTime - localTime)) > 120)
                             {
                                 invalidClientException = new InvalidDataException("Timestamp error.");
