@@ -203,9 +203,6 @@ namespace OpenSSL.Core
 		public extern static IntPtr DES_options();
 
 		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-		public extern static IntPtr idea_options();
-
-		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
 		public extern static IntPtr BF_options();
 
 		#endregion
@@ -646,18 +643,6 @@ namespace OpenSSL.Core
 
 		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
 		public extern static IntPtr EVP_rc4_40();
-
-		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-		public extern static IntPtr EVP_idea_ecb();
-
-		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-		public extern static IntPtr EVP_idea_cfb64();
-
-		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-		public extern static IntPtr EVP_idea_ofb();
-
-		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-		public extern static IntPtr EVP_idea_cbc();
 
 		[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
 		public extern static IntPtr EVP_rc2_ecb();

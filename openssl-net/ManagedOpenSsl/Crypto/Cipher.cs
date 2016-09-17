@@ -217,26 +217,6 @@ namespace OpenSSL.Crypto
 		public static Cipher RC4_40 = new Cipher(Native.EVP_rc4_40(), false);
 
 		/// <summary>
-		/// EVP_idea_ecb()
-		/// </summary>
-		public static Cipher Idea_ECB = new Cipher(Native.EVP_idea_ecb(), false);
-
-		/// <summary>
-		/// EVP_idea_cfb64()
-		/// </summary>
-		public static Cipher Idea_CFB64 = new Cipher(Native.EVP_idea_cfb64(), false);
-
-		/// <summary>
-		/// EVP_idea_ofb()
-		/// </summary>
-		public static Cipher Idea_OFB = new Cipher(Native.EVP_idea_ofb(), false);
-
-		/// <summary>
-		/// EVP_idea_cbc()
-		/// </summary>
-		public static Cipher Idea_CBC = new Cipher(Native.EVP_idea_cbc(), false);
-
-		/// <summary>
 		/// EVP_rc2_ecb()
 		/// </summary>
 		public static Cipher RC2_ECB = new Cipher(Native.EVP_rc2_ecb(), false);

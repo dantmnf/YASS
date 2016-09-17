@@ -112,14 +112,6 @@ namespace OpenSSL.Core
 		}
 
 		/// <summary>
-		/// Returns idea_options()
-		/// </summary>
-		public static string Idea_Options
-		{
-			get { return Native.StaticString(Native.idea_options()); }
-		}
-
-		/// <summary>
 		/// Returns BF_options()
 		/// </summary>
 		public static string Blowfish_Options

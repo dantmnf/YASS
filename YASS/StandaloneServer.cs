@@ -44,25 +44,22 @@ namespace YASS
             public static ServerConfiguration ReadFromJObject(JObject config)
             {
                 //let 0.0.0.0 or ::0 worked
-                IPAddress ip = null;
-                if(config["server"].ToString() == "0.0.0.0" && config["server"].ToString() != "::0")
-                    ip = IPAddress.Any;
-                else if(config["server"].ToString() == "::0")
-                    ip = IPAddress.IPv6Any;
+                var result = new ServerConfiguration();
+                if (config["server"] == null || config["server"].ToString() == "::0")
+                    result.ListenAddress = IPAddress.IPv6Any;
+                else if (config["server"].ToString() == "0.0.0.0")
+                    result.ListenAddress = IPAddress.Any;
                 else
-                    ip = Dns.GetHostAddresses(config["server"].ToString())[0];
-                var result = new ServerConfiguration
-                {
-                    ListenAddress = ip,
-                    ListenPort = int.Parse(config["server_port"].ToString()),
-                    Password = config["password"].ToString(),
-                    CipherName = config["method"].ToString(),
-                    Timeout = int.Parse(config["timeout"].ToString()),
-                    HmacPolicy = config["auth"].ToObject<bool>() ?
-                        TcpRelayServer.ServerHmacPolicy.Mandatory :
-                        TcpRelayServer.ServerHmacPolicy.OptIn,
-                    UdpServer = config["udp"].ToObject<bool>(),
-                };
+                    result.ListenAddress = Dns.GetHostAddresses(config["server"].ToString())[0];
+
+                result.ListenPort = int.Parse(config["server_port"].ToString());
+                result.Password = config["password"].ToString();
+                result.CipherName = config["method"].ToString();
+                result.Timeout = (config["timeout"]?.ToObject<int>()).GetValueOrDefault(600);
+                result.HmacPolicy = (config["auth"]?.ToObject<bool>()).GetValueOrDefault(false) ?
+                    TcpRelayServer.ServerHmacPolicy.Mandatory :
+                    TcpRelayServer.ServerHmacPolicy.OptIn;
+                result.UdpServer = (config["udp"]?.ToObject<bool>()).GetValueOrDefault(false);
                 return result;
             }
 
@@ -85,7 +82,7 @@ namespace YASS
                         TcpRelayServer.ServerHmacPolicy.OptIn,
                     UdpServer = Properties.Settings.Default.UdpServer,
                 };
-                
+
                 return result;
             }
 
@@ -126,30 +123,36 @@ namespace YASS
                     AlgorithmProvider = provider,
                     HmacPolicy = config.HmacPolicy,
                 };
-                var udpRelayServer = new UdpRelayServer(config.ListenAddress, config.ListenPort, config.CipherName,
+                var udpRelayServer = config.UdpServer ? new UdpRelayServer(config.ListenAddress, config.ListenPort, config.CipherName,
                     Encoding.UTF8.GetBytes(config.Password))
                 {
                     AlgorithmProvider = provider
-                };
+                } : null;
                 bool stopping = false;
                 Console.CancelKeyPress += (sender, e) =>
                 {
                     if (!stopping)
+                    {
                         tcpRelayServer.StopListening();
+                        e.Cancel = true;
+                        stopping = true;
+                    }
                     else
+                    {
                         tcpRelayServer.KillAllClients();
-                    e.Cancel = true;
-                    stopping = true;
+                    }
+
                 };
 
                 var tcpServerTask = tcpRelayServer.StartListeningAsync();
-                var udpServerTask = udpRelayServer.StartServerAsync();
+
+                var udpServerTask = config.UdpServer ? udpRelayServer?.StartServerAsync() : null;
                 // tcpServerTask.Wait();
-                Task.WaitAny(tcpServerTask, udpServerTask);
+                tcpServerTask.Wait();
                 tcpServerTask = tcpRelayServer.WaitForAllClients();
                 logger.Info("press Ctrl-C again to force stop");
                 tcpServerTask.Wait();
-                udpRelayServer.StopServer();
+                udpRelayServer?.StopServer();
             }
             catch (Exception e)
             {

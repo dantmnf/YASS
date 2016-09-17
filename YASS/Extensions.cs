@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace YASS.Extensions
 {
-    public static class StreamExtension
+    public static class StreamExtensions
     {
         public static async Task<int> PromisedReadAsync(this Stream stream, byte[] buf, int offset, int count,
             CancellationToken ct)
@@ -37,4 +37,12 @@ namespace YASS.Extensions
             return totalBytesRead;
         }
     }
+
+    static class TaskExtensions
+    {
+        public static void Forget(this Task task)
+        {
+        }
+    }
+
 }

@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using YASS.AlgorithmProvider;
+using YASS.Extensions;
 
 namespace YASS
 {
@@ -52,7 +53,7 @@ namespace YASS
                 try
                 {
                     var result = await _listener.ReceiveAsync();
-                    HandlePacketAsync(result).ConfigureAwait(false);
+                    HandlePacketAsync(result).Forget();
                 }
                 catch (ObjectDisposedException) { }
                 catch (InvalidDataException) { }
@@ -132,10 +133,10 @@ namespace YASS
             {
                 socket = new UdpClient(endpoint);
                 _portMap.Add(packet.RemoteEndPoint, socket);
-                StartReverseRelayAsync(socket, packet.RemoteEndPoint, hmacClient).ConfigureAwait(false);
+                StartReverseRelayAsync(socket, packet.RemoteEndPoint, hmacClient).Forget();
             }
             var data = new ArraySegment<byte>(buf, bytesParsed, datalen);
-            socket.SendAsync(data.ToArray(), datalen, endpoint).ConfigureAwait(false);
+            socket.SendAsync(data.ToArray(), datalen, endpoint).Forget();
         }
 
         private async Task StartReverseRelayAsync(UdpClient socket, IPEndPoint origin, bool hmacEnabled)
@@ -186,7 +187,7 @@ namespace YASS
                         hash.CopyTo(data, bytesFilled);
                     }
                     encryptor.TransformBlock(data, _ivlen, bytesFilled - _ivlen, data, _ivlen);
-                    _listener.SendAsync(data, data.Length, origin).ConfigureAwait(false);
+                    _listener.SendAsync(data, data.Length, origin).Forget();
                 }
             }
             catch (ObjectDisposedException) { }

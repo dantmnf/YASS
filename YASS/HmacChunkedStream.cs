@@ -78,12 +78,12 @@ namespace YASS
 
         public override void Flush()
         {
-            //_stream.Flush();
+            _stream.Flush();
         }
 
         public override async Task FlushAsync(CancellationToken cancellationToken)
         {
-            //await _stream.FlushAsync(cancellationToken);
+            await _stream.FlushAsync(cancellationToken);
         }
 
         public override long Seek(long offset, SeekOrigin origin)
@@ -146,7 +146,7 @@ namespace YASS
             var remoteHash = buffer1;
             var localHash = Util.ComputeHMACSHA1Hash(key, chunkData, 0, datalen);
             _chunkID += 1;
-            if (localHash.Take(10).SequenceEqual(remoteHash))
+            if (new ArraySegment<byte>(localHash, 0, 10).ToArray().SequenceEqual(remoteHash)) // byte[].SequenceEqual(byte[]) is faster than ArraySegment<byte>.SequenceEqual(byte[])
                 return chunkData;
             else
                 throw new InvalidDataException("HMAC mismatch");
