@@ -49,7 +49,7 @@ namespace OpenSSL.Crypto
             BlockSizeValue = cipher.BlockSize * 8;
         }
 
-        public OpenSslGenericSymmetricAlgoriothm(string cipherName)
+        public OpenSslGenericSymmetricAlgorithm(string cipherName)
             : this(Cipher.CreateByName(cipherName))
         {
         }
