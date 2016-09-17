@@ -81,9 +81,9 @@ namespace YASS
         private readonly byte[] _passwordBytes;
         private readonly object _xferBytesLocker = new object();
         private readonly Dictionary<TcpClient, Task> _clientTasks = new Dictionary<TcpClient, Task>();
-        /*
-                private bool _stopping = false;
-        */
+/*
+        private bool _stopping = false;
+*/
 
         public class ServerEventArgs : EventArgs
         {
@@ -216,8 +216,7 @@ namespace YASS
             logger.DebugFormat("client{0}<{1}:{2}> connected", clientIndex, clientEndPoint.Address, clientEndPoint.Port);
 
             var stage = ConnectionStage.New;
-            using (var netStream = client.GetStream())
-            using (var shadowStream = new ShadowStream(netStream, _algorithm, ShadowStreamMode.Read))
+            using (var stream = client.GetStream())
             {
                 try
                 {
@@ -226,169 +225,179 @@ namespace YASS
 
                     var bytesRead = 0;
                     var bytesParsed = 0;
-
-                    var clientBuffer = new byte[280]; // AddressType(1) + Address(<=256) + Port(2) + HMAC(10)
+                    var ivlen = _algorithm.IV.Length;
+                    var iv = new byte[ivlen];
+                    var clientBuffer = new byte[ivlen + 280]; // IV + AddressType(1) + Address(<=256) + Port(2) + HMAC(10)
                     var invalidClientStage = stage;
                     Exception invalidClientException = null;
 
+                    try { bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, ivlen - bytesRead, _serverCt).ConfigureAwait(false); }
+                    catch(IOException) { throw new InvalidDataException("Can't read entire IV."); }
+                    Buffer.BlockCopy(clientBuffer, 0, iv, 0, ivlen);
+                    bytesParsed += ivlen;
 
-
-
-                    bytesRead += await shadowStream.PromisedReadAsync(clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
+                    var iv2 = new byte[ivlen];
+                    _rng.GetBytes(iv2);
                     stage = ConnectionStage.IVReceived;
-                    var atyp = clientBuffer[bytesParsed];
-                    bytesParsed++;
 
+                    using (var decryptor = _algorithm.CreateDecryptor(_algorithm.Key, iv)) // we don't use CryptoStream because it won't return until it get full-length data
+                    using (var encryptor = _algorithm.CreateEncryptor(_algorithm.Key, iv2))
+                    {
+                        bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
+                        decryptor.TransformBlock(clientBuffer, bytesParsed, 1, clientBuffer, bytesParsed);
+                        var atyp = clientBuffer[bytesParsed];
+                        bytesParsed++;
+                        
 #if (YASS_ENABLE_EXTENSIONS)
-                    const byte atypMask = 0xC0; // 0b11000000
+                        const byte atypMask = 0xC0; // 0b11000000
 #else
                         const byte atypMask = 0xE0; // 0b11100000
 #endif
-                    if ((atyp & atypMask) != 0)
-                        invalidClientException = new ProtocolViolationException("Invalid ATYP value.");
+                        if ((atyp & atypMask) != 0)
+                            invalidClientException = new ProtocolViolationException("Invalid ATYP value.");
 
-                    var flaggedAtyp = (AtypFlags)atyp;
-                    var hmacClient = flaggedAtyp.HasFlag(AtypFlags.HMACEnabled);
+                        var flaggedAtyp = (AtypFlags) atyp;
+                        var hmacClient = flaggedAtyp.HasFlag(AtypFlags.HMACEnabled);
 #if (YASS_ENABLE_EXTENSIONS)
-                    var timestampEnabled = flaggedAtyp.HasFlag(AtypFlags.TimestampEnabled);
+                        var timestampEnabled = flaggedAtyp.HasFlag(AtypFlags.TimestampEnabled);
 #endif
-                    var clientAddressType = (AddressType)(atyp & 0x0F);
+                        var clientAddressType = (AddressType)(atyp & 0x0F);
 
-                    stage = ConnectionStage.AddressTypeReceived;
-                    if (hmacClient && HmacPolicy == ServerHmacPolicy.Disabled && invalidClientException == null)
-                        invalidClientException = new ProtocolViolationException("Received an HMAC-enabled request but HMAC is disabled.");
-                    if (!hmacClient && HmacPolicy == ServerHmacPolicy.Mandatory && invalidClientException == null)
-                        invalidClientException = new ProtocolViolationException("Received a non-HMAC-enabled request but HMAC is mandatory.");
+                        stage = ConnectionStage.AddressTypeReceived;
+                        if (hmacClient && HmacPolicy == ServerHmacPolicy.Disabled && invalidClientException == null)
+                            invalidClientException = new ProtocolViolationException("Received an HMAC-enabled request but HMAC is disabled.");
+                        if (!hmacClient && HmacPolicy == ServerHmacPolicy.Mandatory && invalidClientException == null)
+                            invalidClientException = new ProtocolViolationException("Received a non-HMAC-enabled request but HMAC is mandatory.");
 
-                    int addressLength;
-                    switch (clientAddressType)
-                    {
-                        case AddressType.IPv4:
-                            addressLength = 4;
-                            break;
-                        case AddressType.IPv6:
-                            addressLength = 16;
-                            break;
-                        case AddressType.Hostname:
-                            await shadowStream.PromisedReadAsync(clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
-                            bytesRead++;
-                            addressLength = clientBuffer[bytesParsed];
-                            bytesParsed++;
-                            break;
-                        default:
-                            if (invalidClientException == null)
-                                invalidClientException = new ProtocolViolationException("Invalid address type.");
-                            var fakeAddressLength = new byte[1];
-                            _rng.GetNonZeroBytes(fakeAddressLength);
-                            addressLength = fakeAddressLength[0];
-                            break;
-                    }
-
-                    if (invalidClientException != null)
-                        invalidClientStage = stage;
-
-                    bytesRead += await shadowStream.PromisedReadAsync(clientBuffer, bytesRead, addressLength + 2, _serverCt).ConfigureAwait(false);
-
-                    var remoteAddress = new ArraySegment<byte>(clientBuffer, bytesParsed, addressLength);
-                    var port = Util.UInt16FromNetworkOrder(clientBuffer, bytesParsed + addressLength);
-                    bytesParsed += addressLength + 2;
-
-                    stage = ConnectionStage.AddressReceived;
-
-                    if (hmacClient)
-                    {
-                        var iv = shadowStream.IV;
-                        var ivlen = iv.Length;
-                        var headerHmacKey = new byte[_algorithm.KeySize / 8 + ivlen];
-                        iv.CopyTo(headerHmacKey, 0);
-                        _algorithm.Key.CopyTo(headerHmacKey, ivlen);
-
-                        var localHash = Util.ComputeHMACSHA1Hash(headerHmacKey, clientBuffer, 0, bytesParsed);
-
-                        bytesRead += await shadowStream.PromisedReadAsync(clientBuffer, bytesRead, 10, _serverCt).ConfigureAwait(false);
-
-                        var clientHash = new ArraySegment<byte>(clientBuffer, bytesParsed, 10);
-                        bytesParsed += 10;
-
-                        if (!localHash.Take(10).SequenceEqual(clientHash) && invalidClientException == null)
+                        int addressLength;
+                        switch (clientAddressType)
                         {
-                            invalidClientException = new InvalidDataException("HMAC mismatch.");
-                            invalidClientStage = stage;
+                            case AddressType.IPv4:
+                                addressLength = 4;
+                                break;
+                            case AddressType.IPv6:
+                                addressLength = 16;
+                                break;
+                            case AddressType.Hostname:
+                                await stream.PromisedReadAsync(clientBuffer, bytesRead, 1, _serverCt).ConfigureAwait(false);
+                                bytesRead++;
+                                decryptor.TransformBlock(clientBuffer, bytesParsed, 1, clientBuffer, bytesParsed);
+                                addressLength = clientBuffer[bytesParsed];
+                                bytesParsed++;
+                                break;
+                            default:
+                                if (invalidClientException == null)
+                                    invalidClientException = new ProtocolViolationException("Invalid address type.");
+                                var fakeAddressLength = new byte[1];
+                                _rng.GetNonZeroBytes(fakeAddressLength);
+                                addressLength = fakeAddressLength[0];
+                                break;
                         }
-                    }
+
+                        if (invalidClientException != null)
+                            invalidClientStage = stage;
+                        
+                        bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, addressLength + 2, _serverCt).ConfigureAwait(false);
+                        decryptor.TransformBlock(clientBuffer, bytesParsed, addressLength + 2, clientBuffer, bytesParsed);
+
+                        var remoteAddress = new ArraySegment<byte>(clientBuffer, bytesParsed, addressLength);
+                        var port = Util.UInt16FromNetworkOrder(clientBuffer, bytesParsed + addressLength);
+                        bytesParsed += addressLength + 2;
+
+                        stage = ConnectionStage.AddressReceived;
+                        
+                        if (hmacClient)
+                        {
+                            var headerHmacKey = new byte[_algorithm.KeySize / 8 + ivlen];
+                            iv.CopyTo(headerHmacKey, 0);
+                            _algorithm.Key.CopyTo(headerHmacKey, ivlen);
+
+                            var localHash = Util.ComputeHMACSHA1Hash(headerHmacKey, clientBuffer, ivlen, bytesParsed-ivlen);
+
+                            bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, 10, _serverCt).ConfigureAwait(false);
+                            decryptor.TransformBlock(clientBuffer, bytesParsed, 10, clientBuffer, bytesParsed);
+
+                            var clientHash = new ArraySegment<byte>(clientBuffer, bytesParsed, 10);
+                            bytesParsed += 10;
+
+                            if (!localHash.Take(10).SequenceEqual(clientHash) && invalidClientException == null)
+                            {
+                                invalidClientException = new InvalidDataException("HMAC mismatch.");
+                                invalidClientStage = stage;
+                            }
+                        }
 
 #if (YASS_ENABLE_EXTENSIONS)
-                    if (timestampEnabled)
-                    {
-                        bytesRead += await shadowStream.PromisedReadAsync(clientBuffer, bytesRead, 8, _serverCt).ConfigureAwait(false);
-                        var timestamp = new ArraySegment<byte>(clientBuffer, bytesParsed, 8);
-                        bytesParsed += 8;
-                        var clientTime = Util.UInt64FromNetworkOrder(timestamp.ToArray(), 0);
-                        var localTime = Util.GetUtcTimeEpoch();
-                        if (Math.Abs((double)(clientTime - localTime)) > 120)
+                        if (timestampEnabled)
                         {
-                            invalidClientException = new InvalidDataException("Timestamp error.");
-                            invalidClientStage = stage;
+                            bytesRead += await stream.PromisedReadAsync(clientBuffer, bytesRead, 8, _serverCt).ConfigureAwait(false);
+                            decryptor.TransformBlock(clientBuffer, bytesParsed, 8, clientBuffer, bytesParsed);
+                            var timestamp = new ArraySegment<byte>(clientBuffer, bytesParsed, 8);
+                            bytesParsed += 8;
+                            var clientTime = Util.UInt64FromNetworkOrder(timestamp.ToArray(), 0);
+                            var localTime = Util.GetUtcTimeEpoch();
+                            if (Math.Abs((double) (clientTime - localTime)) > 120)
+                            {
+                                invalidClientException = new InvalidDataException("Timestamp error.");
+                                invalidClientStage = stage;
+                            }
                         }
-                    }
 #endif
 
-                    if (invalidClientException != null)
-                    {
-                        stage = invalidClientStage;
-                        throw invalidClientException;
-                    }
-
-                    ev.IsHmacClient = hmacClient;
-                    ev.RemoteAddressType = clientAddressType;
-                    if (clientAddressType == AddressType.Hostname)
-                        ev.RemoteHostname = Encoding.UTF8.GetString(remoteAddress.ToArray());
-                    else
-                        ev.RemoteAddress = new IPAddress(remoteAddress.Take(addressLength).ToArray());
-                    ev.RemotePort = port;
-                    OnRemoteAddressReceived(ev);
-                    if (ev.DropClient) throw new SystemException("An OnRemoteAddressReceived event handler requires dropping client.");
-
-
-                    using (var remote = new TcpClient())
-                    {
-                        var address = clientAddressType == AddressType.Hostname
-                            ? (await Dns.GetHostAddressesAsync(ev.RemoteHostname).ConfigureAwait(false))[0]
-                            : ev.RemoteAddress;
-                        var logAddress = clientAddressType == AddressType.Hostname
-                            ? Encoding.UTF8.GetString(remoteAddress.ToArray())
-                            : address.ToString();
-                        logger.InfoFormat("client{0}<{1}:{2}> connecting to {3}:{4}", clientIndex, clientEndPoint.Address, clientEndPoint.Port, logAddress, port);
-
-                        remote.ReceiveTimeout = remote.SendTimeout = _timeout;
-                        remote.Client.NoDelay = true;
-                        await remote.ConnectAsync(address, port).ConfigureAwait(false);
-
-                        stage = ConnectionStage.RemoteConnected;
-
-                        using (var remoteStream = remote.GetStream())
-                        using (var clientCts = new CancellationTokenSource())
-                        using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_serverCt, clientCts.Token))
-                        using (var writeStream = new ShadowStream(netStream, _algorithm, ShadowStreamMode.Write))
+                        if (invalidClientException != null)
                         {
-                            var ct = linkedCts.Token;
-                            var readStream = hmacClient
-                                ? (Stream)new HmacChunkedStream(shadowStream, shadowStream.IV, ShadowStreamMode.Read)
-                                : shadowStream;
+                            stage = invalidClientStage;
+                            throw invalidClientException;
+                        }
+
+                        ev.IsHmacClient = hmacClient;
+                        ev.RemoteAddressType = clientAddressType;
+                        if (clientAddressType == AddressType.Hostname)
+                            ev.RemoteHostname = Encoding.UTF8.GetString(remoteAddress.ToArray());
+                        else
+                            ev.RemoteAddress = new IPAddress(remoteAddress.Take(addressLength).ToArray());
+                        ev.RemotePort = port;
+                        OnRemoteAddressReceived(ev);
+                        if (ev.DropClient) throw new SystemException("An OnRemoteAddressReceived event handler requires dropping client.");
+
+
+                        using (var remote = new TcpClient())
+                        {
+                            var address = clientAddressType == AddressType.Hostname
+                                ? (await Dns.GetHostAddressesAsync(ev.RemoteHostname).ConfigureAwait(false))[0]
+                                : ev.RemoteAddress;
+                            var logAddress = clientAddressType == AddressType.Hostname
+                                ? Encoding.UTF8.GetString(remoteAddress.ToArray())
+                                : address.ToString();
+                            logger.InfoFormat("client{0}<{1}:{2}> connecting to {3}:{4}", clientIndex, clientEndPoint.Address, clientEndPoint.Port, logAddress, port);
+
+                            remote.ReceiveTimeout = remote.SendTimeout = _timeout;
+                            remote.Client.NoDelay = true;
+                            await remote.ConnectAsync(address, port).ConfigureAwait(false);
+
+                            stage = ConnectionStage.RemoteConnected;
                             
-                            var clientToRemoteTask = readStream.CopyToAsync(remoteStream, 4096, ct);
-                            var remoteToClientTask = remoteStream.CopyToAsync(writeStream, 4096, ct);
-                            stage = ConnectionStage.Streaming;
+                            using (var remoteStream = remote.GetStream())
+                            using (var clientCts = new CancellationTokenSource())
+                            using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_serverCt, clientCts.Token))
+                            {
+                                var ct = linkedCts.Token;
+                                var clientTask = hmacClient
+                                    ? StartHmacEnabledClientRelayAsync(stream, remoteStream, iv, decryptor, ct)
+                                    : StartRelayAsync(stream, remoteStream, decryptor, ct);
 
-                            await Task.WhenAny(clientToRemoteTask, remoteToClientTask);
-                            clientCts.Cancel();
-                            client.Close();
-                            remote.Close();
-                            //await Task.WhenAll(clientTask, remoteTask); 
+                                var remoteTask = StartRelayAsync(remoteStream, stream, encryptor, iv2, 0, ivlen, ct);
+                                stage = ConnectionStage.Streaming;
+
+                                await Task.WhenAny(clientTask, remoteTask);
+                                clientCts.Cancel();
+                                client.Close();
+                                remote.Close();
+                                //await Task.WhenAll(clientTask, remoteTask); 
+                            }
+                            OnClientDisconnected(ev);
                         }
-                        OnClientDisconnected(ev);
                     }
-
 
                 }
                 catch (Exception e)
@@ -400,10 +409,87 @@ namespace YASS
                     client.Client.Dispose();
                 }
             }
-            lock (_clientTasks) _clientTasks.Remove(client);
+            lock(_clientTasks) _clientTasks.Remove(client);
             logger.DebugFormat("Client{0}<{1}:{2}> disconnected", clientIndex, clientEndPoint.Address, clientEndPoint.Port);
         }
 
+        private async Task StartRelayAsync(Stream srcStream, Stream dstStream, ICryptoTransform transformer, byte[] advancePayload,
+            int payloadOffset, int payloadCount, /* useless */ CancellationToken ct)
+        {
+            var buffer = new byte[8192];
+            try
+            {
+                while (!ct.IsCancellationRequested && srcStream.CanRead && dstStream.CanWrite)
+                {
+                    if (advancePayload != null)
+                    {
+                        Buffer.BlockCopy(advancePayload, payloadOffset, buffer, 0, payloadCount);
+                    }
+                    var len = await srcStream.ReadAsync(buffer, payloadCount, buffer.Length-payloadCount, ct).ConfigureAwait(false);
+                    if (len == 0) throw new SocketException();
+                    transformer.TransformBlock(buffer, payloadCount, len, buffer, payloadCount);
+                    await dstStream.WriteAsync(buffer, 0, payloadCount + len, ct).ConfigureAwait(false);
+                    if (advancePayload != null)
+                    {
+                        advancePayload = null;
+                        payloadOffset = payloadCount = 0;
+                    }
+                    lock (_xferBytesLocker) BytesTransferred += len;
+                }
+            }
+            catch (ObjectDisposedException) { }
+            catch (AggregateException) { }
+            catch (SocketException) { }
 
+        }
+
+        private async Task StartRelayAsync(Stream srcStream, Stream dstStream, ICryptoTransform transformer, /* useless */ CancellationToken ct)
+        {
+            await StartRelayAsync(srcStream, dstStream, transformer, null, 0, 0, ct);
+        }
+
+
+        private async Task StartHmacEnabledClientRelayAsync(Stream clientStream, Stream remoteStream, byte[] iv, ICryptoTransform decryptor, /* useless */ CancellationToken ct)
+        {
+            var clientBuffer = new byte[65535];
+            var clientHash = new byte[10];
+            var ivlen = iv.Length;
+            int readlen;
+            int datalen;
+            uint chunkId = 0;
+            var hmacKey = new byte[iv.Length + 4];
+            iv.CopyTo(hmacKey, 0);
+            try
+            {
+                while (!ct.IsCancellationRequested && clientStream.CanRead && remoteStream.CanWrite)
+                {
+                    // data length
+                    readlen = await clientStream.PromisedReadAsync(clientBuffer, 0, 2, ct).ConfigureAwait(false);
+                    decryptor.TransformBlock(clientBuffer, 0, readlen, clientBuffer, 0);
+                    datalen = Util.UInt16FromNetworkOrder(clientBuffer, 0);
+
+                    // client hash
+                    readlen = await clientStream.PromisedReadAsync(clientHash, 0, 10, ct).ConfigureAwait(false);
+                    decryptor.TransformBlock(clientHash, 0, readlen, clientHash, 0);
+
+                    // data
+                    readlen = await clientStream.PromisedReadAsync(clientBuffer, 0, datalen, ct).ConfigureAwait(false);
+                    lock (_xferBytesLocker) BytesTransferred += datalen + 12;
+                    decryptor.TransformBlock(clientBuffer, 0, readlen, clientBuffer, 0);
+                    BitConverter.GetBytes((uint)IPAddress.HostToNetworkOrder((int)chunkId)).CopyTo(hmacKey, ivlen);
+                    if (!Util.ComputeHMACSHA1Hash(hmacKey, clientBuffer, 0, datalen).Take(10).SequenceEqual(clientHash))
+                        throw new InvalidDataException("HMAC mismatch.");
+
+                    chunkId++;
+                    await remoteStream.WriteAsync(clientBuffer, 0, datalen, ct).ConfigureAwait(false);
+                }
+            }
+            catch (ObjectDisposedException) { }
+            catch (AggregateException) { }
+            catch (SocketException) { }
+            catch (IOException) { }
+        }
+
+       
     }
 }
