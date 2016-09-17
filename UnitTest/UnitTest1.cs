@@ -3,7 +3,7 @@ using System.IO;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenSSL.Crypto;
-using YASS;
+using YASS.Extensions;
 //using YASS.UnitTest.Extensions;
 
 namespace YASS.UnitTest
@@ -29,7 +29,8 @@ namespace YASS.UnitTest
 
             var ss2 = new ShadowStream(ms2, algo, ShadowStreamMode.Read);
             var readData = new byte[52428800];
-            ss2.Read(readData, 0, 524288);
+            var len = ss2.PromisedRead(readData, 0, 524288);
+            Assert.AreEqual(len, 524288);
             Assert.IsTrue(originalData.SequenceEqual(readData));
         }
 
@@ -49,7 +50,8 @@ namespace YASS.UnitTest
 
             var ss2 = new HmacChunkedStream(ms2, iv, ShadowStreamMode.Read);
             var readData = new byte[52428800];
-            ss2.Read(readData, 0, 524288);
+            var len = ss2.PromisedRead(readData, 0, 524288);
+            Assert.AreEqual(len, 524288);
             Assert.IsTrue(originalData.SequenceEqual(readData));
         }
     }

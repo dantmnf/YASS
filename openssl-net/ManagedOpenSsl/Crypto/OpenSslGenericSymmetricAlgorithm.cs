@@ -8,7 +8,7 @@ namespace OpenSSL.Crypto
     /// There are some restrictions due to the API difference between OpenSSL EVP and .NET Cryptographic API
     /// If you are doing AES transform, consider using AesOpenSsl class
     /// </summary>
-    public class OpenSslGenericSymmetricAlgoriothm : SymmetricAlgorithm
+    public class OpenSslGenericSymmetricAlgorithm : SymmetricAlgorithm
     {
         private RandomNumberGenerator _rng = RandomNumberGenerator.Create();
         /// <summary>
@@ -42,7 +42,7 @@ namespace OpenSSL.Crypto
 
         public readonly Cipher OpenSslCipher;
 
-        public OpenSslGenericSymmetricAlgoriothm(Cipher cipher)
+        public OpenSslGenericSymmetricAlgorithm(Cipher cipher)
         {
             OpenSslCipher = cipher;
             KeySizeValue = cipher.KeyLength * 8;
