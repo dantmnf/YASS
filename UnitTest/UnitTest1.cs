@@ -1,10 +1,11 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenSSL.Crypto;
 using YASS.Extensions;
-//using YASS.UnitTest.Extensions;
+using YASS.UnitTest.Extensions;
 
 namespace YASS.UnitTest
 {
@@ -18,7 +19,7 @@ namespace YASS.UnitTest
             var originalData = new byte[52428800];
             rng.NextBytes(originalData);
             var ms1 = new MemoryStream();
-            var algo = new OpenSslGenericSymmetricAlgoriothm("aes-128-cfb");
+            var algo = new OpenSslGenericSymmetricAlgorithm("aes-128-cfb");
             algo.GenerateKey();
             algo.GenerateIV();
 
@@ -29,8 +30,8 @@ namespace YASS.UnitTest
 
             var ss2 = new ShadowStream(ms2, algo, ShadowStreamMode.Read);
             var readData = new byte[52428800];
-            var len = ss2.PromisedRead(readData, 0, 524288);
-            Assert.AreEqual(len, 524288);
+            var len = ss2.PromisedRead(readData, 0, 52428800);
+            Assert.AreEqual(len, 52428800);
             Assert.IsTrue(originalData.SequenceEqual(readData));
         }
 
@@ -50,8 +51,8 @@ namespace YASS.UnitTest
 
             var ss2 = new HmacChunkedStream(ms2, iv, ShadowStreamMode.Read);
             var readData = new byte[52428800];
-            var len = ss2.PromisedRead(readData, 0, 524288);
-            Assert.AreEqual(len, 524288);
+            var len = ss2.PromisedRead(readData, 0, 52428800);
+            Assert.AreEqual(len, 52428800);
             Assert.IsTrue(originalData.SequenceEqual(readData));
         }
     }

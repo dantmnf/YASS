@@ -28,11 +28,13 @@ namespace OpenSSL.Crypto
         /// <summary>
         /// THIS PROPERTY WILL NOT BE RESPECTED due to the API difference between OpenSSL EVP and .NET Cryptographic API
         /// </summary>
+        [Obsolete("OpenSslGenericSymmetricAlgorithm.CipherMode will be ignored due to the API difference between OpenSSL EVP and .NET Cryptographic API")]
         public override CipherMode Mode { get; set; }
 
         /// <summary>
         /// THIS PROPERTY WILL NOT BE RESPECTED due to the API difference between OpenSSL EVP and .NET Cryptographic API
         /// </summary>
+        [Obsolete("OpenSslGenericSymmetricAlgorithm.FeedbackSize will be ignored due to the API difference between OpenSSL EVP and .NET Cryptographic API")]
         public override int FeedbackSize { get; set; }
 
         public override int BlockSize => OpenSslCipher.BlockSize*8;

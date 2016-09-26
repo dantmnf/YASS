@@ -28,8 +28,13 @@ namespace YASS.UnitTest.Extensions
 
         public static unsafe bool SequenceEqual(this byte[] src1, byte[] src2)
         {
-            if (src1.Length != src2.Length) return false;
+            if (src1.Length != src2.Length)
+                return false;
             var len = src1.Length;
+            /*for (var i = 0; i < len; i++)
+                if (src1[i] != src2[i])
+                    return false;
+            return true;*/
             fixed (byte* pSrc1 = src1)
             fixed (byte* pSrc2 = src2)
             {
